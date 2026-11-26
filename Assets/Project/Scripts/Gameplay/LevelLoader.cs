@@ -25,6 +25,7 @@ namespace FoodHunt
         [SerializeField] private TextAsset levelFile;
         [SerializeField] private MeshRenderer voxelModel;
         [SerializeField] private MeshRenderer boardModel;
+        [SerializeField] private Transform voxels;
         [SerializeField] private PaletteEntry[] palette;
         [SerializeField] private BoardCamera boardCamera;
 
@@ -36,9 +37,9 @@ namespace FoodHunt
 
         private void Start()
         {
-            if (!levelFile || !voxelModel || !boardModel || !boardCamera)
+            if (!levelFile || !voxelModel || !boardModel || !voxels || !boardCamera)
             {
-                Debug.LogError("Assign the level file, models and board camera before loading.", this);
+                Debug.LogError("Assign the level file, scene board, voxel model, voxel parent and camera before loading.", this);
                 return;
             }
 
@@ -79,12 +80,11 @@ namespace FoodHunt
                 }
             }
 
-            var board = new GameObject("Board").transform;
-            board.SetParent(transform, false);
-            board.localScale = new Vector3(
+            // Size the scene board in level axes, preserving the FBX's imported transform.
+            boardModel.transform.parent.localScale = new Vector3(
                 (level.width * CellSpacing + 2 * InsetMargin) / InsetWidth, 1f,
                 (level.height * CellSpacing + 2 * InsetMargin) / InsetWidth);
-            var bounds = Instantiate(boardModel, board, false).bounds;
+            var bounds = boardModel.bounds;
 
             for (int index = 0; index < level.cells.Length; index++)
             {
@@ -93,7 +93,7 @@ namespace FoodHunt
 
                 int column = index % level.width;
                 int row = index / level.width;
-                MeshRenderer voxel = Instantiate(voxelModel, transform, false);
+                MeshRenderer voxel = Instantiate(voxelModel, voxels, false);
                 voxel.name = $"Voxel_{column}_{row}";
                 voxel.transform.localPosition = new Vector3(
                     (column - (level.width - 1) * 0.5f) * CellSpacing, SurfaceHeight,
