@@ -7,12 +7,18 @@ namespace FoodHunt
     [DisallowMultipleComponent]
     public sealed class LevelLoader : MonoBehaviour
     {
+        public enum LevelState { Playing, Won, Lost }
+        public LevelState State { get; private set; }
+        [SerializeField] private UnityEngine.UI.Text resultLabel;
+        private HarvestBoard harvestBoard;
+
         [Serializable]
         private sealed class LevelData
         {
             public int width;
             public int height;
             public int[] cells;
+            public QueueColumn[] queues;
         }
 
         [Serializable]
@@ -28,6 +34,8 @@ namespace FoodHunt
         [SerializeField] private Transform voxels;
         [SerializeField] private PaletteEntry[] palette;
         [SerializeField] private BoardCamera boardCamera;
+        [SerializeField] private SlotQueueLayout slotQueueLayout;
+        [SerializeField] private AntColony antColony;
 
         private const float CellSpacing = 0.21f;
         // Dimensions of the Colony Kit board's inset and its upper surface.
@@ -80,11 +88,23 @@ namespace FoodHunt
                 }
             }
 
+            if (level.queues != null && (!slotQueueLayout || !slotQueueLayout.CanLoad(level.queues, materials)))
+            {
+                Debug.LogError("Check slot and queue model references, box colors and counts.", this);
+                return;
+            }
+            if (level.queues != null && (!antColony || !antColony.IsConfigured))
+            {
+                Debug.LogError("Assign the worker model, walk animation and nest to the colony.", this);
+                return;
+            }
+
             // Size the scene board in level axes, preserving the FBX's imported transform.
             boardModel.transform.parent.localScale = new Vector3(
                 (level.width * CellSpacing + 2 * InsetMargin) / InsetWidth, 1f,
                 (level.height * CellSpacing + 2 * InsetMargin) / InsetWidth);
             var bounds = boardModel.bounds;
+            harvestBoard = new HarvestBoard(level.width, level.height, CellSpacing, SurfaceHeight, voxels);
 
             for (int index = 0; index < level.cells.Length; index++)
             {
@@ -99,10 +119,37 @@ namespace FoodHunt
                     (column - (level.width - 1) * 0.5f) * CellSpacing, SurfaceHeight,
                     (row - (level.height - 1) * 0.5f) * CellSpacing);
                 voxel.sharedMaterial = materials[id];
+                harvestBoard.Add(column, row, id, voxel);
                 bounds.Encapsulate(voxel.bounds);
             }
 
-            boardCamera.Frame(bounds);
+            var playArea = bounds;
+            if (level.queues != null)
+            {
+                antColony.SetBoard(harvestBoard);
+                playArea.Encapsulate(slotQueueLayout.Load(level.queues, materials, antColony));
+            }
+            boardCamera.Frame(boardModel.bounds, playArea);
+        }
+
+        private void LateUpdate()
+        {
+            if (harvestBoard == null || State != LevelState.Playing) return;
+
+            if (harvestBoard.RemainingPixels == 0)
+                State = LevelState.Won;
+            else if (slotQueueLayout && slotQueueLayout.AllSlotsBlocked(harvestBoard.Revision))
+                State = LevelState.Lost;
+            else
+                return;
+
+            if (slotQueueLayout) slotQueueLayout.enabled = false;
+            if (State == LevelState.Lost) antColony.StopAllCoroutines();
+            if (resultLabel)
+            {
+                resultLabel.text = State == LevelState.Won ? "Kazandın!" : "Kaybettin";
+                resultLabel.gameObject.SetActive(true);
+            }
         }
     }
 }
